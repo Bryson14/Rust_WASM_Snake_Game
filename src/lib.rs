@@ -1,4 +1,5 @@
 mod utils;
+use rand::{self, Rng};
 
 use wasm_bindgen::prelude::*;
 
@@ -18,87 +19,156 @@ pub fn greet() {
     alert("Hello, rust-js-snake-game!");
 }
 
-/// holds a position on the map
-#[wasm_bindgen]
-#[derive(Copy, Clone)]
-pub struct Position {
-    pub x: i32,
-    pub y: i32,
+#[derive(Debug, PartialEq, Copy, Clone)]
+enum Entity {
+    Snake,
+    Food,
 }
 
-/// Debug lets it be tested. PartialEq lets it be used in assert_eq
-#[wasm_bindgen]
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub enum Direction {
-    UP = 0,
-    DOWN = 1,
-    RIGHT = 2,
-    LEFT = 3,
+#[derive(Debug)]
+enum Direction {
+    Up,
+    Down,
+    Right,
+    Left,
 }
 
-pub struct Board {
-    pub board: Vec<Vec<u8>>,
+#[derive(Debug)]
+struct Snake {
+    body: Vec<(u8, u8)>,
 }
 
-#[wasm_bindgen]
-pub struct Game {
-    pub width: u8,
-    pub height: u8,
-    pub speed: u8,
-    snake: Vec<Position>,
-    pub direction: Direction,
-    pub food: Position,
-    pub score: u8,
+impl Snake {
+    pub fn eat(food_position: (usize, usize)) {}
+
+    /// moves the snake in a direction and returns the new location it moved to
+    pub fn move_snake(&mut self, direction: Direction) -> Result<((u8, u8), (u8, u8)), &str> {
+        let new_pos;
+        match direction {
+            Direction::Up => {
+                if self.body[0].1 == 0 {
+                    return Err("Hit the top wall");
+                }
+                new_pos = (self.body[0].0, self.body[0].1 - 1);
+            }
+            Direction::Down => {
+                new_pos = (self.body[0].0, self.body[0].1 + 1);
+            }
+            Direction::Left => {
+                if self.body[0].0 == 0 {
+                    return Err("Hit the left wall");
+                }
+                new_pos = (self.body[0].0 - 1, self.body[0].1);
+            }
+            Direction::Right => {
+                new_pos = (self.body[0].0 + 1, self.body[0].1);
+            }
+        }
+
+        let old_pos = self.body.pop().unwrap();
+        self.body.insert(0, new_pos);
+        Ok((new_pos, old_pos))
+    }
+}
+
+#[derive(Debug)]
+struct Board {
+    board: Vec<Option<Entity>>,
+    width: u8,
+    height: u8,
+}
+
+impl Board {
+    pub fn place_random_food(&mut self) {
+        let mut available_spots = Vec::new();
+        for (i, option_entity) in self.board.iter().enumerate() {
+            match option_entity {
+                Some(_) => continue,
+                None => available_spots.push(i),
+            }
+        }
+
+        let choice = available_spots[rand::thread_rng().gen_range(0..available_spots.len())];
+        self.board[choice as usize] = Some(Entity::Food);
+    }
+
+    pub fn get_index(&self, col: u8, row: u8) -> Result<usize, &'static str> {
+        if col > self.width - 1 || row > self.height - 1 {
+            Err("Out of bounds")
+        } else {
+            let idx = (self.width * row + col) as usize;
+            Ok(idx)
+        }
+    }
+
+    pub fn get_entity_at(&self, col: u8, row: u8) -> Result<Option<Entity>, &'static str> {
+        let idx = self.get_index(col, row);
+        match idx {
+            Err(s) => return Err(s),
+            Ok(i) => match self.board[i] {
+                Some(e) => return Ok(Some(e)),
+                None => return Ok(None),
+            },
+        }
+    }
+}
+
+#[derive(Debug)]
+struct Game {
     board: Board,
+    snake_direction: Direction,
+    snake: Snake,
 }
 
-#[wasm_bindgen]
 impl Game {
-    /// the head of the snake will be in index 0 of snake: Vec<Position>
-    #[wasm_bindgen(constructor)]
-    pub fn new(
-        mut width: u8,
-        mut height: u8,
-        mut speed: u8,
-        mut snake_length: u8,
-        mut direction: Direction,
-    ) -> Game {
-        // checking board size
-        if width > 100 || width < 8 {
-            width = 17
+    pub fn new(mut width: u8, mut height: u8) -> Game {
+        if 10 > width || width > 50 {
+            width = 17;
         }
-        if height > 100 || height < 8 {
-            height = 16
+        if 10 > height || height > 50 {
+            height = 15;
         }
 
-        // checking game speed and initial direction
-        if speed > 100 || speed < 1 {
-            speed = 10
+        let mut board: Vec<Option<Entity>> = Vec::new();
+        let mut snake_body = Vec::new();
+        let mut idx = 0;
+        for x in 0..width {
+            for y in 0..height {
+                // place snake half way in the board. Starts out with three
+                if height / 2 == y {
+                    if width / 2 == x {
+                        board[idx + 1] = Some(Entity::Snake);
+                        board[idx] = Some(Entity::Snake);
+                        board[idx - 1] = Some(Entity::Snake);
+
+                        // adding the positions of the snake
+                        snake_body.push(((x + 1) as u8, y as u8));
+                        snake_body.push((x as u8, y as u8));
+                        snake_body.push(((x - 1) as u8, y as u8));
+                    }
+                }
+                idx += 1;
+            }
         }
-        direction = Direction::RIGHT;
 
-        // checking snake length
-        if snake_length >= width - 3 {
-            snake_length = 3
-        }
-
-        // creating snake vector
-        let snake = vec![Position { x: 0, y: 0 }; snake_length as usize];
-
-        // creating board
-        let two_d_vector = vec![vec![0; width as usize]; height as usize];
-        let board = Board {
-            board: two_d_vector,
-        };
-        Game {
-            width: width,
-            height: height,
-            speed: speed,
+        let mut myboard = Board {
             board: board,
-            direction: direction,
-            food: Position { x: 5, y: 3 },
-            score: 0,
-            snake: snake,
+            height: height,
+            width: width,
+        };
+        myboard.place_random_food();
+
+        Game {
+            board: myboard,
+            snake_direction: Direction::Right,
+            snake: Snake { body: snake_body },
+        }
+    }
+
+    pub fn tick(&mut self, snake_direction: Option<Direction>) {
+        match snake_direction {
+            Some(direction) => self.snake_direction = direction,
+            None => (),
         }
     }
 }
@@ -107,11 +177,90 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_new_game() {
-        let game = Game::new(1, 1, 1, 0, Direction::UP);
-        assert_eq!(game.direction, Direction::RIGHT);
-        assert_eq!(game.height, 16);
-        assert_eq!(game.width, 17);
-        assert_eq!(game.score, 0);
+    fn test_board_new() {
+        let w = 10;
+        let h = 10;
+        let b: Vec<Option<Entity>> = (0..w * h).map(|_| None).collect();
+        let board = Board {
+            width: w,
+            height: h,
+            board: b,
+        };
+    }
+
+    #[test]
+    fn test_board_place_random_food() {
+        let w = 10;
+        let h = 10;
+        let b: Vec<Option<Entity>> = (0..w * h).map(|_| None).collect();
+        let mut board = Board {
+            width: w,
+            height: h,
+            board: b,
+        };
+        board.place_random_food();
+
+        let mut found_food = false;
+        for pos in board.board.iter() {
+            match pos {
+                Some(entity) => {
+                    if entity == &Entity::Food && !found_food {
+                        // checking if place-random-food() placed more than one food
+                        found_food = true;
+                    }
+                }
+                None => (),
+            }
+        }
+        assert_eq!(true, found_food);
+    }
+
+    #[test]
+    fn test_board_get_index() {
+        let w = 10;
+        let h = 10;
+        let b: Vec<Option<Entity>> = (0..w * h).map(|_| None).collect();
+        let board = Board {
+            width: w,
+            height: h,
+            board: b,
+        };
+
+        assert_eq!(55, board.get_index(5, 5).unwrap());
+    }
+
+    #[test]
+    fn test_board_get_index2() {
+        let w = 10;
+        let h = 10;
+        let b: Vec<Option<Entity>> = (0..w * h).map(|_| None).collect();
+        let board = Board {
+            width: w,
+            height: h,
+            board: b,
+        };
+
+        match board.get_index(5, 11) {
+            Ok(_) => panic!(),
+            Err(s) => assert_eq!(s, "Out of bounds"),
+        }
+    }
+
+    #[test]
+    fn test_board_get_entity_at() {
+        let w = 10;
+        let h = 10;
+        let b: Vec<Option<Entity>> = (0..w * h).map(|_| None).collect();
+        let mut board = Board {
+            width: w,
+            height: h,
+            board: b,
+        };
+
+        assert_eq!(board.get_entity_at(0, 0), Ok(None));
+        board.board[12] = Some(Entity::Snake);
+        assert_eq!(board.get_entity_at(3, 1), Ok(Some(Entity::Snake)));
+        let e = board.get_entity_at(15, 20);
+        assert_eq!(e.unwrap_err(), "Out of bounds");
     }
 }
