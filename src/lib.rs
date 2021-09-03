@@ -25,7 +25,7 @@ enum Entity {
     Food,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 enum Direction {
     Up,
     Down,
@@ -42,9 +42,22 @@ impl Snake {
     pub fn eat(food_position: (usize, usize)) {}
 
     /// moves the snake in a direction and returns the new location it moved to
-    pub fn move_snake(&mut self, direction: Direction) -> Result<((u8, u8), (u8, u8)), &str> {
+    pub fn move_snake(
+        &mut self,
+        current_direction: Direction,
+        mut new_direction: Direction,
+    ) -> Result<((u8, u8), (u8, u8)), &str> {
+        // snakes cant make 180 degree turn. If input trys 180 degree turn, then keep going in same direction
+        new_direction = match (new_direction, current_direction) {
+            (Direction::Up, Direction::Down) => current_direction,
+            (Direction::Down, Direction::Up) => current_direction,
+            (Direction::Left, Direction::Right) => current_direction,
+            (Direction::Right, Direction::Left) => current_direction,
+            (_, _) => new_direction,
+        };
+
         let new_pos;
-        match direction {
+        match new_direction {
             Direction::Up => {
                 if self.body[0].1 == 0 {
                     return Err("Hit the top wall");
@@ -166,9 +179,34 @@ impl Game {
     }
 
     pub fn tick(&mut self, snake_direction: Option<Direction>) {
-        match snake_direction {
-            Some(direction) => self.snake_direction = direction,
-            None => (),
+        let snake_direction = match snake_direction {
+            Some(direction) => direction,
+            None => self.snake_direction,
+        };
+
+        let r = self.snake.move_snake(self.snake_direction, snake_direction);
+        match r {
+            Err(e) => {
+                // decide if needs to stop game
+            }
+            Ok(tup) => {
+                println!("tuple: {:?}", tup);
+                if tup.0 .0 >= self.board.width {
+                    println!("Passed the right wall, break");
+                } else if tup.0 .1 >= self.board.height {
+                    println!("Passed the bottom wall, break");
+                } else {
+                    let new_pos = self.board.get_index(tup.0 .0, tup.0 .1).unwrap();
+                    let old_pos = self.board.get_index(tup.1 .0, tup.1 .1).unwrap();
+
+                    self.board.board[old_pos] = None;
+                    self.board.board[new_pos] = Some(Entity::Snake);
+                }
+
+                // check if out of bounds (right or bottom wall),
+                // update board
+                // update current snake direction
+            }
         }
     }
 }
@@ -259,8 +297,80 @@ mod tests {
 
         assert_eq!(board.get_entity_at(0, 0), Ok(None));
         board.board[12] = Some(Entity::Snake);
-        assert_eq!(board.get_entity_at(3, 1), Ok(Some(Entity::Snake)));
+        println!("BOARD\n{:?}\n------", board.board);
+        assert_eq!(board.get_entity_at(2, 1), Ok(Some(Entity::Snake)));
         let e = board.get_entity_at(15, 20);
         assert_eq!(e.unwrap_err(), "Out of bounds");
+    }
+
+    /// trying to the right in the same direction.
+    #[test]
+    fn test_snake_move_snake() {
+        let mut snake_body = Vec::new();
+        // placing snake
+        snake_body.push((2 as u8, 0 as u8));
+        snake_body.push((1 as u8, 0 as u8));
+        snake_body.push((0 as u8, 0 as u8));
+
+        let mut snake = Snake { body: snake_body };
+        let current_direction = Direction::Right;
+        let (new_pos, old_pos) = snake
+            .move_snake(current_direction, Direction::Right)
+            .unwrap();
+        assert_eq!(new_pos, (3, 0));
+        assert_eq!(old_pos, (0, 0));
+    }
+
+    /// trying to move 180 degrees. Should continue straight
+    #[test]
+    fn test_snake_move_snake2() {
+        let mut snake_body = Vec::new();
+        // placing snake
+        snake_body.push((2 as u8, 0 as u8));
+        snake_body.push((1 as u8, 0 as u8));
+        snake_body.push((0 as u8, 0 as u8));
+
+        let mut snake = Snake { body: snake_body };
+        let current_direction = Direction::Right;
+        let (new_pos, old_pos) = snake
+            .move_snake(current_direction, Direction::Left)
+            .unwrap();
+        assert_eq!(new_pos, (3, 0));
+        assert_eq!(old_pos, (0, 0));
+    }
+
+    /// trying to move down
+    #[test]
+    fn test_snake_move_snake3() {
+        let mut snake_body = Vec::new();
+        // placing snake
+        snake_body.push((2 as u8, 0 as u8));
+        snake_body.push((1 as u8, 0 as u8));
+        snake_body.push((0 as u8, 0 as u8));
+
+        let mut snake = Snake { body: snake_body };
+        let current_direction = Direction::Right;
+        let (new_pos, old_pos) = snake
+            .move_snake(current_direction, Direction::Down)
+            .unwrap();
+        assert_eq!(new_pos, (2, 1));
+        assert_eq!(old_pos, (0, 0));
+    }
+
+    /// trying to move up into wall
+    #[test]
+    fn test_snake_move_snake4() {
+        let mut snake_body = Vec::new();
+        // placing snake
+        snake_body.push((2 as u8, 0 as u8));
+        snake_body.push((1 as u8, 0 as u8));
+        snake_body.push((0 as u8, 0 as u8));
+
+        let mut snake = Snake { body: snake_body };
+        let current_direction = Direction::Right;
+        assert_eq!(
+            true,
+            snake.move_snake(current_direction, Direction::Up).is_err()
+        );
     }
 }
