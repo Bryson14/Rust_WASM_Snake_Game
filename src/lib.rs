@@ -135,10 +135,10 @@ struct Game {
 
 impl Game {
     pub fn new(mut width: u8, mut height: u8) -> Game {
-        if 10 > width || width > 50 {
+        if 10 >= width || width > 50 {
             width = 17;
         }
-        if 10 > height || height > 50 {
+        if 10 >= height || height > 50 {
             height = 15;
         }
 
@@ -187,7 +187,7 @@ impl Game {
         let r = self.snake.move_snake(self.snake_direction, snake_direction);
         match r {
             Err(e) => {
-                // decide if needs to stop game
+                println!("Error occured: {}", e);
             }
             Ok(tup) => {
                 println!("tuple: {:?}", tup);
@@ -201,11 +201,8 @@ impl Game {
 
                     self.board.board[old_pos] = None;
                     self.board.board[new_pos] = Some(Entity::Snake);
+                    self.snake_direction = snake_direction;
                 }
-
-                // check if out of bounds (right or bottom wall),
-                // update board
-                // update current snake direction
             }
         }
     }
@@ -372,5 +369,12 @@ mod tests {
             true,
             snake.move_snake(current_direction, Direction::Up).is_err()
         );
+    }
+
+    #[test]
+    fn test_game_new() {
+        let game = Game::new(10, 10);
+        assert_eq!(game.board.height, 10);
+        assert_eq!(game.board.width, 10);
     }
 }
