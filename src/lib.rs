@@ -1,5 +1,6 @@
 mod utils;
 use rand::{self, Rng};
+use std::fmt;
 
 use wasm_bindgen::prelude::*;
 
@@ -19,25 +20,30 @@ pub fn greet() {
     alert("Hello, rust-js-snake-game!");
 }
 
-#[derive(Debug, PartialEq, Copy, Clone)]
-enum Entity {
+#[wasm_bindgen]
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Entity {
     Snake,
     Food,
 }
 
-#[derive(Debug, Copy, Clone)]
-enum Direction {
+#[wasm_bindgen]
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Direction {
     Up,
     Down,
     Right,
     Left,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct Snake {
     body: Vec<(u8, u8)>,
 }
 
+#[wasm_bindgen]
 impl Snake {
     pub fn eat(food_position: (usize, usize)) {}
 
@@ -46,7 +52,7 @@ impl Snake {
         &mut self,
         current_direction: Direction,
         mut new_direction: Direction,
-    ) -> Result<((u8, u8), (u8, u8)), &str> {
+    ) -> Result<((u8, u8), (u8, u8)), u8> {
         // snakes cant make 180 degree turn. If input trys 180 degree turn, then keep going in same direction
         new_direction = match (new_direction, current_direction) {
             (Direction::Up, Direction::Down) => current_direction,
@@ -60,7 +66,7 @@ impl Snake {
         match new_direction {
             Direction::Up => {
                 if self.body[0].1 == 0 {
-                    return Err("Hit the top wall");
+                    return Err(2);
                 }
                 new_pos = (self.body[0].0, self.body[0].1 - 1);
             }
@@ -69,7 +75,7 @@ impl Snake {
             }
             Direction::Left => {
                 if self.body[0].0 == 0 {
-                    return Err("Hit the left wall");
+                    return Err(3);
                 }
                 new_pos = (self.body[0].0 - 1, self.body[0].1);
             }
@@ -91,6 +97,7 @@ struct Board {
     height: u8,
 }
 
+#[wasm_bindgen]
 impl Board {
     pub fn place_random_food(&mut self) {
         let mut available_spots = Vec::new();
@@ -105,13 +112,8 @@ impl Board {
         self.board[choice as usize] = Some(Entity::Food);
     }
 
-    pub fn get_index(&self, col: u8, row: u8) -> Result<usize, &'static str> {
-        if col > self.width - 1 || row > self.height - 1 {
-            Err("Out of bounds")
-        } else {
-            let idx = (self.width * row + col) as usize;
-            Ok(idx)
-        }
+    pub fn get_index(&self, col: u8, row: u8) -> usize {
+        (self.width * row + col) as usize
     }
 
     pub fn get_entity_at(&self, col: u8, row: u8) -> Result<Option<Entity>, &'static str> {
@@ -126,6 +128,20 @@ impl Board {
     }
 }
 
+impl fmt::Display for Board {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for line in self.board.as_slice().chunks(self.width as usize) {
+            for &cell in line {
+                let symbol = if cell == None { '◻' } else { '◼' };
+                write!(f, "{}", symbol)?;
+            }
+            write!(f, "\n")?;
+        }
+
+        Ok(())
+    }
+}
+
 #[derive(Debug)]
 struct Game {
     board: Board,
@@ -133,6 +149,7 @@ struct Game {
     snake: Snake,
 }
 
+#[wasm_bindgen]
 impl Game {
     pub fn new(mut width: u8, mut height: u8) -> Game {
         if 10 >= width || width > 50 {
@@ -209,7 +226,6 @@ impl Game {
 }
 
 mod tests {
-    use super::*;
 
     #[test]
     fn test_board_new() {
