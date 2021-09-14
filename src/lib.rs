@@ -26,6 +26,7 @@ pub fn greet() {
 pub enum Entity {
     Snake,
     Food,
+    Empty,
 }
 
 #[wasm_bindgen]
@@ -38,6 +39,7 @@ pub enum Direction {
     Left,
 }
 
+#[wasm_bindgen]
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct Snake {
     body: Vec<(u8, u8)>,
@@ -90,9 +92,10 @@ impl Snake {
     }
 }
 
+#[wasm_bindgen]
 #[derive(Debug)]
 struct Board {
-    board: Vec<Option<Entity>>,
+    board: Vec<Entity>,
     width: u8,
     height: u8,
 }
@@ -103,27 +106,29 @@ impl Board {
         let mut available_spots = Vec::new();
         for (i, option_entity) in self.board.iter().enumerate() {
             match option_entity {
-                Some(_) => continue,
-                None => available_spots.push(i),
+                Entity::Empty => available_spots.push(i),
+                _ => continue,
             }
         }
 
         let choice = available_spots[rand::thread_rng().gen_range(0..available_spots.len())];
-        self.board[choice as usize] = Some(Entity::Food);
+        self.board[choice as usize] = Entity::Food;
     }
 
-    pub fn get_index(&self, col: u8, row: u8) -> usize {
-        (self.width * row + col) as usize
+    pub fn get_index(&self, col: u8, row: u8) -> isize {
+        if 0 > col || col >= self.width || 0 > row || row >= self.height {
+            -1
+        } else {
+            (self.width * row + col) as isize
+        }
     }
 
-    pub fn get_entity_at(&self, col: u8, row: u8) -> Result<Option<Entity>, &'static str> {
+    pub fn get_entity_at(&self, col: u8, row: u8) -> Option<Entity> {
         let idx = self.get_index(col, row);
-        match idx {
-            Err(s) => return Err(s),
-            Ok(i) => match self.board[i] {
-                Some(e) => return Ok(Some(e)),
-                None => return Ok(None),
-            },
+        if idx == -1 {
+            None
+        } else {
+            Some(self.board[idx as usize])
         }
     }
 }
@@ -132,7 +137,12 @@ impl fmt::Display for Board {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         for line in self.board.as_slice().chunks(self.width as usize) {
             for &cell in line {
-                let symbol = if cell == None { '◻' } else { '◼' };
+                let mut symbol = '◻';
+                if cell == Entity::Snake {
+                    symbol = '◼';
+                } else if cell == Entity::Food {
+                    symbol = '*';
+                }
                 write!(f, "{}", symbol)?;
             }
             write!(f, "\n")?;
@@ -142,6 +152,7 @@ impl fmt::Display for Board {
     }
 }
 
+#[wasm_bindgen]
 #[derive(Debug)]
 struct Game {
     board: Board,
@@ -159,7 +170,7 @@ impl Game {
             height = 15;
         }
 
-        let mut board: Vec<Option<Entity>> = Vec::new();
+        let b: Vec<Entity> = (0..width * height).map(|_| Entity::Empty).collect();
         let mut snake_body = Vec::new();
         let mut idx = 0;
         for x in 0..width {
@@ -167,9 +178,9 @@ impl Game {
                 // place snake half way in the board. Starts out with three
                 if height / 2 == y {
                     if width / 2 == x {
-                        board[idx + 1] = Some(Entity::Snake);
-                        board[idx] = Some(Entity::Snake);
-                        board[idx - 1] = Some(Entity::Snake);
+                        b[idx + 1] = Entity::Snake;
+                        b[idx] = Entity::Snake;
+                        b[idx - 1] = Entity::Snake;
 
                         // adding the positions of the snake
                         snake_body.push(((x + 1) as u8, y as u8));
@@ -177,12 +188,13 @@ impl Game {
                         snake_body.push(((x - 1) as u8, y as u8));
                     }
                 }
+
                 idx += 1;
             }
         }
 
         let mut myboard = Board {
-            board: board,
+            board: b,
             height: height,
             width: width,
         };
@@ -213,12 +225,16 @@ impl Game {
                 } else if tup.0 .1 >= self.board.height {
                     println!("Passed the bottom wall, break");
                 } else {
-                    let new_pos = self.board.get_index(tup.0 .0, tup.0 .1).unwrap();
-                    let old_pos = self.board.get_index(tup.1 .0, tup.1 .1).unwrap();
+                    let new_pos = self.board.get_index(tup.0 .0, tup.0 .1);
+                    let old_pos = self.board.get_index(tup.1 .0, tup.1 .1);
 
-                    self.board.board[old_pos] = None;
-                    self.board.board[new_pos] = Some(Entity::Snake);
-                    self.snake_direction = snake_direction;
+                    if new_pos != -1 && old_pos != -1 {
+                        self.board.board[old_pos as usize] = Entity::Empty;
+                        self.board.board[new_pos as usize] = Entity::Snake;
+                        self.snake_direction = snake_direction;
+                    } else {
+                        println!("Error!! in Tick function");
+                    }
                 }
             }
         }
@@ -227,11 +243,17 @@ impl Game {
 
 mod tests {
 
+    use super::Board;
+    use super::Direction;
+    use super::Entity;
+    use super::Game;
+    use super::Snake;
+
     #[test]
     fn test_board_new() {
         let w = 10;
         let h = 10;
-        let b: Vec<Option<Entity>> = (0..w * h).map(|_| None).collect();
+        let b: Vec<Entity> = (0..w * h).map(|_| Entity::Empty).collect();
         let board = Board {
             width: w,
             height: h,
@@ -243,7 +265,7 @@ mod tests {
     fn test_board_place_random_food() {
         let w = 10;
         let h = 10;
-        let b: Vec<Option<Entity>> = (0..w * h).map(|_| None).collect();
+        let b: Vec<Entity> = (0..w * h).map(|_| Entity::Empty).collect();
         let mut board = Board {
             width: w,
             height: h,
@@ -254,13 +276,11 @@ mod tests {
         let mut found_food = false;
         for pos in board.board.iter() {
             match pos {
-                Some(entity) => {
-                    if entity == &Entity::Food && !found_food {
-                        // checking if place-random-food() placed more than one food
-                        found_food = true;
-                    }
+                Entity::Food => {
+                    // checking if place-random-food() placed more than one food
+                    found_food = true ^ found_food;
                 }
-                None => (),
+                _ => (),
             }
         }
         assert_eq!(true, found_food);
@@ -270,50 +290,48 @@ mod tests {
     fn test_board_get_index() {
         let w = 10;
         let h = 10;
-        let b: Vec<Option<Entity>> = (0..w * h).map(|_| None).collect();
+        let b: Vec<Entity> = (0..w * h).map(|_| Entity::Empty).collect();
         let board = Board {
             width: w,
             height: h,
             board: b,
         };
 
-        assert_eq!(55, board.get_index(5, 5).unwrap());
+        assert_eq!(55, board.get_index(5, 5));
     }
 
     #[test]
     fn test_board_get_index2() {
         let w = 10;
         let h = 10;
-        let b: Vec<Option<Entity>> = (0..w * h).map(|_| None).collect();
+        let b: Vec<Entity> = (0..w * h).map(|_| Entity::Empty).collect();
         let board = Board {
             width: w,
             height: h,
             board: b,
         };
 
-        match board.get_index(5, 11) {
-            Ok(_) => panic!(),
-            Err(s) => assert_eq!(s, "Out of bounds"),
-        }
+        let idx = board.get_index(5, 11);
+        assert_eq!(idx, -1);
     }
 
     #[test]
     fn test_board_get_entity_at() {
         let w = 10;
         let h = 10;
-        let b: Vec<Option<Entity>> = (0..w * h).map(|_| None).collect();
+        let b: Vec<Entity> = (0..w * h).map(|_| Entity::Empty).collect();
         let mut board = Board {
             width: w,
             height: h,
             board: b,
         };
 
-        assert_eq!(board.get_entity_at(0, 0), Ok(None));
-        board.board[12] = Some(Entity::Snake);
+        assert_eq!(board.get_entity_at(0, 0), Some(Entity::Empty));
+        board.board[12] = Entity::Snake;
         println!("BOARD\n{:?}\n------", board.board);
-        assert_eq!(board.get_entity_at(2, 1), Ok(Some(Entity::Snake)));
+        assert_eq!(board.get_entity_at(2, 1), Some(Entity::Snake));
         let e = board.get_entity_at(15, 20);
-        assert_eq!(e.unwrap_err(), "Out of bounds");
+        assert_eq!(e, None);
     }
 
     /// trying to the right in the same direction.
