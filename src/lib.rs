@@ -16,8 +16,8 @@ extern "C" {
 }
 
 #[wasm_bindgen]
-pub fn greet() {
-    alert("Hello, rust-js-snake-game!");
+pub fn greet(s: &str) {
+    alert(format!("Hello {}, rust-js-snake-game!", s));
 }
 
 #[wasm_bindgen]
@@ -39,15 +39,13 @@ pub enum Direction {
     Left,
 }
 
-#[wasm_bindgen]
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct Snake {
     body: Vec<(u8, u8)>,
 }
 
-#[wasm_bindgen]
 impl Snake {
-    pub fn eat(food_position: (usize, usize)) {}
+    pub fn eat(food_position: Vec<usize>) {}
 
     /// moves the snake in a direction and returns the new location it moved to
     pub fn move_snake(
@@ -116,7 +114,7 @@ impl Board {
     }
 
     pub fn get_index(&self, col: u8, row: u8) -> isize {
-        if 0 > col || col >= self.width || 0 > row || row >= self.height {
+        if col >= self.width || row >= self.height {
             -1
         } else {
             (self.width * row + col) as isize
@@ -163,14 +161,14 @@ struct Game {
 #[wasm_bindgen]
 impl Game {
     pub fn new(mut width: u8, mut height: u8) -> Game {
-        if 10 >= width || width > 50 {
+        if 10 > width || width > 50 {
             width = 17;
         }
-        if 10 >= height || height > 50 {
+        if 10 > height || height > 50 {
             height = 15;
         }
 
-        let b: Vec<Entity> = (0..width * height).map(|_| Entity::Empty).collect();
+        let mut b: Vec<Entity> = (0..width * height).map(|_| Entity::Empty).collect();
         let mut snake_body = Vec::new();
         let mut idx = 0;
         for x in 0..width {
@@ -410,5 +408,31 @@ mod tests {
         let game = Game::new(10, 10);
         assert_eq!(game.board.height, 10);
         assert_eq!(game.board.width, 10);
+    }
+
+    #[test]
+    fn test_game_tick() {
+        let mut game = Game::new(10, 10);
+        assert_eq!(game.board.get_entity_at(6, 5), Some(Entity::Snake));
+        assert_eq!(game.board.get_entity_at(4, 5), Some(Entity::Snake));
+        game.tick(None);
+        assert_eq!(game.board.get_entity_at(7, 5), Some(Entity::Snake));
+        assert_eq!(game.board.get_entity_at(4, 5), Some(Entity::Empty));
+    }
+
+    #[test]
+    fn test_game_tick_2() {
+        let mut game = Game::new(10, 10);
+        game.tick(Some(Direction::Left));
+        assert_eq!(game.board.get_entity_at(7, 5), Some(Entity::Snake));
+        assert_eq!(game.board.get_entity_at(4, 5), Some(Entity::Empty));
+    }
+
+    #[test]
+    fn test_game_tick_3() {
+        let mut game = Game::new(10, 10);
+        game.tick(Some(Direction::Up));
+        assert_eq!(game.board.get_entity_at(6, 4), Some(Entity::Snake));
+        assert_eq!(game.board.get_entity_at(4, 5), Some(Entity::Empty));
     }
 }
