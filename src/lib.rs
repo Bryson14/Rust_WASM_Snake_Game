@@ -161,7 +161,7 @@ struct Game {
 #[wasm_bindgen]
 impl Game {
     pub fn new(mut width: u8, mut height: u8) -> Game {
-        if 10 > width || width > 50 {
+        if 10 > width || width >= 49 {
             width = 17;
         }
         if 10 > height || height > 50 {
